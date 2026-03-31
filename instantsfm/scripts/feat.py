@@ -19,6 +19,10 @@ def run_feature_handler():
     if not path_info:
         print('Invalid data path, please check the provided path')
         return
+    if path_info.database_exists:
+        print('Database path already exists')
+        return
+
     start_time = time.time()
     config = Config(handler_args.feature_handler, handler_args.manual_config_name)
     GenerateDatabase(path_info.image_path, path_info.database_path, handler_args.feature_handler, config, single_camera=handler_args.single_camera, camera_per_folder=handler_args.camera_per_folder)
