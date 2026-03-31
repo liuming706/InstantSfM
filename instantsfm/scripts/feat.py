@@ -1,4 +1,3 @@
-import os
 import time
 from argparse import ArgumentParser
 
@@ -20,13 +19,6 @@ def run_feature_handler():
     if not path_info:
         print('Invalid data path, please check the provided path')
         return
-    force_rebuild = os.environ.get("INSTANTSFM_FORCE_REBUILD_DB", "1").lower() in ("1", "true", "yes")
-    if path_info.database_exists and not force_rebuild:
-        if os.path.getsize(path_info.database_path) > 0:
-            print('Database already exists; skipping feature extraction/matching.')
-            return
-        print('Database file exists but is empty; rebuilding.')
-
     start_time = time.time()
     config = Config(handler_args.feature_handler, handler_args.manual_config_name)
     GenerateDatabase(path_info.image_path, path_info.database_path, handler_args.feature_handler, config, single_camera=handler_args.single_camera, camera_per_folder=handler_args.camera_per_folder)
