@@ -102,7 +102,7 @@ pip install -e .
 ```
 Install bae by running:
 ```bash
-pip install git+ssh://git@github.com/zitongzhan/bae.git
+pip install git+https://github.com/sair-lab/bae.git
 ```
 If you find error like
 ```bash
