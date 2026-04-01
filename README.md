@@ -191,7 +191,7 @@ If you find our code or paper useful, please consider citing:
   title = {InstantSfM: Towards GPU-Native SfM for the Deep Learning Era},
   author = {Zhong, Jiankun and Zhan, Zitong and Gao, Quankai and Chen, Ziyu and Lou, Haozhe and Mao, Jiageng and Neumann, Ulrich and Wang, Chen and Wang, Yue},
   journal = {arXiv preprint arXiv:2510.13310},
-  year = {2026},
+  year = {2025},
   url = {https://arxiv.org/abs/2510.13310},
   code = {https://github.com/cre185/InstantSfM}
 }
@@ -202,7 +202,7 @@ and
   title = {Bundle Adjustment in the Eager Mode},
   author = {Zhan, Zitong and Xu, Huan and Fang, Zihang and Wei, Xinpeng and Hu, Yaoyu and Wang, Chen},
   journal = {arXiv preprint arXiv:2409.12190},
-  year = {2025},
+  year = {2024},
   url = {https://arxiv.org/abs/2409.12190}
 }
 ```
