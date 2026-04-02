@@ -66,7 +66,8 @@
 </table>
 
 ## News📰  
-- **2026/2/6**: Bumped to version 0.2.0 with tools for depth generation. Detailed information can be found below.  
+- **2026/03/31**: Fix the accuracy of retriangulation between bundle adjustment loops. More runtime improvements on the way.   
+- **2026/02/06**: Bumped to version 0.2.0 with tools for depth generation. Detailed information can be found below.  
 - **2025/12/02**: Added a Dockerfile and quick test command to run the bundled `examples/kitchen` dataset.  
 - **2025/11/27**: We changed the data structure into a more SIMD-friendly format, which further speeds up the whole pipeline by around 10%.  
 
