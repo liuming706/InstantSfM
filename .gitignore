@@ -194,3 +194,5 @@ scannetpp_colmap/*
 tankstemple/*
 datasets/*
 db/*
+.omx/
+.codex/

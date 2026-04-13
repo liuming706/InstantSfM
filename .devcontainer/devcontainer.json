@@ -15,12 +15,15 @@
 	],
 
 	"features": {
-		"ghcr.io/jsburckhardt/devcontainer-features/codex:1": {}
+		"ghcr.io/devcontainers/features/node:1": {}
 	},
+
+	"postCreateCommand": ". ${NVM_DIR}/nvm.sh && nvm install --lts && npm install -g @openai/codex oh-my-codex",
 
 	"mounts": [
 		"source=${localEnv:HOME}/.cache,target=/root/.cache,type=bind,consistency=cached",
 		"source=${localEnv:HOME}/.codex,target=/root/.codex,type=bind",
+		"source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind",
 	],
 	
 	"customizations": {
