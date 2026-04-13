@@ -594,6 +594,13 @@ def get_error_thresholds(args: argparse.Namespace) -> list[float]:
         raise ValueError(f"Invalid error type: {args.error_type}")
 
 
+def _image_cam_from_world(image):
+    """Handle pycolmap Image.cam_from_world as method or property."""
+
+    cam_from_world = image.cam_from_world
+    return cam_from_world() if callable(cam_from_world) else cam_from_world
+
+
 def compute_rel_errors(
     sparse_gt: pycolmap.Reconstruction,
     sparse: pycolmap.Reconstruction,
@@ -645,13 +652,16 @@ def compute_rel_errors(
                 continue
 
             other_image = images[other_image_gt.name]
+            other_cam_from_world = _image_cam_from_world(other_image)
+            this_cam_from_world = _image_cam_from_world(this_image)
+            other_cam_from_world_gt = _image_cam_from_world(other_image_gt)
+            this_cam_from_world_gt = _image_cam_from_world(this_image_gt)
 
             other_from_this = (
-                other_image.cam_from_world * this_image.cam_from_world.inverse()
+                other_cam_from_world * this_cam_from_world.inverse()
             )
             other_from_this_gt = (
-                other_image_gt.cam_from_world
-                * this_image_gt.cam_from_world.inverse()
+                other_cam_from_world_gt * this_cam_from_world_gt.inverse()
             )
 
             estimated_from_gt = other_from_this.inverse() * other_from_this_gt
@@ -705,9 +715,11 @@ def compute_abs_errors(
             continue
 
         image = images[image_gt.name]
+        image_cam_from_world = _image_cam_from_world(image)
+        image_gt_cam_from_world = _image_cam_from_world(image_gt)
 
         estimated_from_gt = (
-            image.cam_from_world * image_gt.cam_from_world.inverse()
+            image_cam_from_world * image_gt_cam_from_world.inverse()
         )
 
         dts[i] = np.linalg.norm(estimated_from_gt.translation)
