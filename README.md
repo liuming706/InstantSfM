@@ -26,7 +26,7 @@
 </div>
 
 <div align="center">
-    <a href="https://cre185.github.io/InstantSfM/"><strong>Project Page</strong></a> |
+    <a href="https://zitongzhan.github.io/InstantSfM/dashboard.html"><strong>KPI dashboard</strong></a> |
     <a href="https://arxiv.org/abs/2510.13310"><strong>Paper</strong></a> |
     <a href="https://youtu.be/v-ewKEPTEDg"><strong>Video</strong></a> 
 </div>
