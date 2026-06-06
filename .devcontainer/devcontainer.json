@@ -18,7 +18,7 @@
 		"ghcr.io/devcontainers/features/node:1": {}
 	},
 
-	"postCreateCommand": ". ${NVM_DIR}/nvm.sh && nvm install --lts && npm install -g @openai/codex oh-my-codex",
+	"postCreateCommand": ". ${NVM_DIR}/nvm.sh && nvm install --lts && npm install -g @openai/codex oh-my-codex && pip install pycolmap==3.13.0",
 
 	"mounts": [
 		"source=${localEnv:HOME}/.cache,target=/root/.cache,type=bind,consistency=cached",
