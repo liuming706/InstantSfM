@@ -44,17 +44,17 @@
   <tr>
     <td align="center" width="33%">
       <p align="center" width="100%">
-        <img src="https://github.com/sair-lab/bae/blob/gh-page/docs/assets/garden_half.gif?raw=true" alt="Garden bundle adjustment example" width="100%" />
+        <img src="https://github.com/sair-lab/bae/blob/product-page/docs/assets/garden_half.gif?raw=true" alt="Garden bundle adjustment example" width="100%" />
       </p>
     </td>
     <td align="center" width="33%">
       <p align="center" width="100%">
-        <img src="https://github.com/sair-lab/bae/blob/gh-page/docs/assets/counter_half.gif?raw=true" alt="Counter bundle adjustment example" width="100%" />
+        <img src="https://github.com/sair-lab/bae/blob/product-page/docs/assets/counter_half.gif?raw=true" alt="Counter bundle adjustment example" width="100%" />
       </p>
     </td>
     <td align="center" width="33%">
       <p align="center" width="100%">
-        <img src="https://github.com/sair-lab/bae/blob/gh-page/docs/assets/kitchen_half.gif?raw=true" alt="Kitchen bundle adjustment example" width="100%" />
+        <img src="https://github.com/sair-lab/bae/blob/product-page/docs/assets/kitchen_half.gif?raw=true" alt="Kitchen bundle adjustment example" width="100%" />
       </p>
     </td>
   </tr>
