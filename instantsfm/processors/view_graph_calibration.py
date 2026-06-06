@@ -10,12 +10,7 @@ import tqdm
 from scipy.optimize import minimize_scalar
 
 from instantsfm.scene.defs import ConfigurationType, ViewGraph
-from instantsfm.utils.cost_function import (
-    FetzerFocalLengthCostFunction,
-    FetzerFocalLengthSameCameraCostFunction,
-    fetzer_cost,
-    fetzer_ds,
-)
+from instantsfm.utils.cost_function import FetzerFocalLengthCostFunction, FetzerFocalLengthSameCameraCostFunction, fetzer_ds, fetzer_cost
 from instantsfm.utils.optimization_models import FetzerCalibrationModel
 
 # used by torch LM
@@ -196,22 +191,11 @@ def SolveViewGraphCalibration(view_graph: ViewGraph, cameras, images, VIEW_GRAPH
         parameter_blocks.setdefault(cam_id2, optimized_focals[cam_id2:cam_id2 + 1])
 
         if cam_id1 == cam_id2:
-            cost_function = FetzerFocalLengthSameCameraCostFunction(
-                calibration_input.F,
-                cameras[cam_id1].principal_point,
-            )
+            cost_function = FetzerFocalLengthSameCameraCostFunction(calibration_input.F, cameras[cam_id1].principal_point)
             problem.add_residual_block(cost_function, loss_function, [parameter_blocks[cam_id1]])
         else:
-            cost_function = FetzerFocalLengthCostFunction(
-                calibration_input.F,
-                cameras[cam_id1].principal_point,
-                cameras[cam_id2].principal_point,
-            )
-            problem.add_residual_block(
-                cost_function,
-                loss_function,
-                [parameter_blocks[cam_id1], parameter_blocks[cam_id2]],
-            )
+            cost_function = FetzerFocalLengthCostFunction(calibration_input.F, cameras[cam_id1].principal_point, cameras[cam_id2].principal_point)
+            problem.add_residual_block(cost_function, loss_function, [parameter_blocks[cam_id1], parameter_blocks[cam_id2]])
 
     num_variable_cameras = 0
     for cam_id, parameter_block in parameter_blocks.items():
