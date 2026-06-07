@@ -6,6 +6,7 @@ import numpy as np
 
 from instantsfm.eval.colmap_eval.evaluation.utils import (
     compute_abs_errors,
+    compute_auc,
     compute_rel_errors,
 )
 
@@ -93,3 +94,9 @@ def test_compute_rel_errors_accepts_method_and_property_cam_from_world():
 
     assert np.array_equal(dts, np.array([0.0, 0.0]))
     assert np.array_equal(dRs, np.array([0.0, 0.0]))
+
+
+def test_compute_auc_works_without_numpy_trapezoid_alias():
+    aucs = compute_auc(np.array([1.0, 2.0]), [3.0], min_error=0.0)
+
+    assert np.allclose(aucs, np.array([60.60606061]))
