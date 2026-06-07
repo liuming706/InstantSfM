@@ -6,6 +6,24 @@ import torch
 from bae.utils.ba import rotate_quat
 from bae.autograd.function import TrackingTensor, map_transform
 
+def _fisheye_from_normal_torch(points_proj):
+    r = torch.linalg.norm(points_proj, dim=-1, keepdim=True)
+    theta = torch.atan(r)
+    scale = torch.where(r > 1e-12, theta / r, torch.ones_like(r))
+    return points_proj * scale
+
+def _fov_distort_torch(points_proj, omega):
+    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
+    omega2 = omega * omega
+    tan_half_omega = torch.tan(omega / 2)
+    radius = torch.sqrt(r2)
+    factor = torch.atan(radius * 2 * tan_half_omega) / torch.clamp(radius * omega, min=1e-12)
+    center_factor = 2 * tan_half_omega / torch.clamp(omega, min=1e-12)
+    factor = torch.where(r2 < 1e-8, center_factor, factor)
+    small_omega_factor = 1 + omega2 * (1 / 12 - r2 / 3)
+    factor = torch.where(omega2 < 1e-8, small_omega_factor, factor)
+    return points_proj * factor
+
 @map_transform
 def fetzer_cost(fi, fj, ds):
     di = fj * fj * ds[..., 0, 0] + ds[..., 0, 1]
@@ -102,12 +120,10 @@ def reproject_opencv_fisheye(points, extrinsics, intrinsics, pp):
     k1 = intrinsics[..., -4].unsqueeze(-1)
     k2 = intrinsics[..., -3].unsqueeze(-1)
     k3 = intrinsics[..., -2].unsqueeze(-1)
-    # k4 = intrinsics[..., -1].unsqueeze(-1) but ignored
-    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
-    r = torch.sqrt(r2)
-    theta = torch.atan(r)
-    points_proj = points_proj * theta / r
-    radial = 1 + k1 * r2 + k2 * r2**2 + k3 * r2**3
+    k4 = intrinsics[..., -1].unsqueeze(-1)
+    points_proj = _fisheye_from_normal_torch(points_proj)
+    theta2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
+    radial = 1 + k1 * theta2 + k2 * theta2**2 + k3 * theta2**3 + k4 * theta2**4
     points_proj = points_proj * radial
     points_proj = points_proj * ff + pp
     # Return [N, 3] with (x, y, depth)
@@ -138,30 +154,12 @@ def reproject_full_opencv(points, extrinsics, intrinsics, pp):
 
 @map_transform
 def reproject_fov(points, extrinsics, intrinsics, pp):
-    # TODO: complete this function
-    raise NotImplementedError
     points_cam = rotate_quat(points, extrinsics)
     depth = points_cam[..., 2].unsqueeze(-1)  # [N, 1]
     points_proj = points_cam[..., :2] / points_cam[..., 2].unsqueeze(-1)  # add dimension for broadcasting
-    ff = intrinsics[..., -2].unsqueeze(-1)
+    ff = intrinsics[..., -3:-1]
     omega = intrinsics[..., -1].unsqueeze(-1)
-    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
-    omega2 = omega * omega
-    epsilon = 1e-4
-    factor = torch.zeros_like(omega)
-    # omega close to 0
-    omega_mask = omega2 < epsilon
-    factor[omega_mask] = (omega2[omega_mask] + r2[omega_mask]) / 3 - omega2[omega_mask] / 12 + 1
-    # r close to 0
-    r_mask = (r2 < epsilon) & ~omega_mask
-    factor[r_mask] = (-2 * torch.tan(omega[r_mask] / 2) * (4 * r2[r_mask] * torch.tan(omega[r_mask] / 2)**2 - 3)) / (3 * omega[r_mask])
-    # else
-    else_mask = ~omega_mask & ~r_mask
-    radius = torch.sqrt(r2[else_mask])
-    numerator = torch.atan(radius * 2 * torch.tan(omega[else_mask] / 2))
-    factor[else_mask] = numerator / (radius * omega[else_mask])
-
-    points_proj = points_proj * factor * ff + pp
+    points_proj = _fov_distort_torch(points_proj, omega) * ff + pp
     # Return [N, 3] with (x, y, depth)
     return torch.cat([points_proj, depth], dim=-1)
 
@@ -172,11 +170,9 @@ def reproject_simple_radial_fisheye(points, extrinsics, intrinsics, pp):
     points_proj = points_cam[..., :2] / points_cam[..., 2].unsqueeze(-1)
     f = intrinsics[..., -2].unsqueeze(-1)
     k = intrinsics[..., -1].unsqueeze(-1)
-    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
-    r = torch.sqrt(r2)
-    theta = torch.atan(r)
-    points_proj = points_proj * theta / r
-    points_proj = points_proj * (1 + k * r2) * f + pp
+    points_proj = _fisheye_from_normal_torch(points_proj)
+    theta2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
+    points_proj = points_proj * (1 + k * theta2) * f + pp
     # Return [N, 3] with (x, y, depth)
     return torch.cat([points_proj, depth], dim=-1)
 
@@ -188,18 +184,14 @@ def reproject_radial_fisheye(points, extrinsics, intrinsics, pp):
     f = intrinsics[..., -3].unsqueeze(-1)
     k1 = intrinsics[..., -2].unsqueeze(-1)
     k2 = intrinsics[..., -1].unsqueeze(-1)
-    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
-    r = torch.sqrt(r2)
-    theta = torch.atan(r)
-    points_proj = points_proj * theta / r
-    points_proj = points_proj * (1 + k1 * r2 + k2 * r2**2) * f + pp
+    points_proj = _fisheye_from_normal_torch(points_proj)
+    theta2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
+    points_proj = points_proj * (1 + k1 * theta2 + k2 * theta2**2) * f + pp
     # Return [N, 3] with (x, y, depth)
     return torch.cat([points_proj, depth], dim=-1)
 
 @map_transform
 def reproject_thin_prism_fisheye(points, extrinsics, intrinsics, pp):
-    # TODO: complete this function
-    raise NotImplementedError
     points_cam = rotate_quat(points, extrinsics)
     depth = points_cam[..., 2].unsqueeze(-1)  # [N, 1]
     points_proj = points_cam[..., :2] / points_cam[..., 2].unsqueeze(-1)
@@ -208,17 +200,15 @@ def reproject_thin_prism_fisheye(points, extrinsics, intrinsics, pp):
     k2 = intrinsics[..., -7].unsqueeze(-1)
     p = intrinsics[..., -6:-4]
     k3 = intrinsics[..., -4].unsqueeze(-1)
-    # k4 = intrinsics[..., -3].unsqueeze(-1) but ignored
+    k4 = intrinsics[..., -3].unsqueeze(-1)
     sx = intrinsics[..., -2:]
-    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
-    r = torch.sqrt(r2)
-    theta = torch.atan(r)
-    points_proj = points_proj * theta / r
+    points_proj = _fisheye_from_normal_torch(points_proj)
+    theta2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
     uv = (points_proj[..., 0] * points_proj[..., 1]).unsqueeze(-1)
-    radial = k1 * r2 + k2 * r2**2 + k3 * r2**3
+    radial = k1 * theta2 + k2 * theta2**2 + k3 * theta2**3 + k4 * theta2**4
     d = points_proj * radial + 2 * p * uv
-    d = d + p.flip(-1) * (r2 + 2 * points_proj[..., :2]**2)
-    d = d + sx * r2
+    d = d + p.flip(-1) * (theta2 + 2 * points_proj[..., :2]**2)
+    d = d + sx * theta2
     points_proj = points_proj + d
     points_proj = points_proj * ff + pp
     # Return [N, 3] with (x, y, depth)
@@ -287,11 +277,10 @@ def reproject_opencv_fisheye_no_depth(points, extrinsics, intrinsics, pp):
     k1 = intrinsics[..., -4].unsqueeze(-1)
     k2 = intrinsics[..., -3].unsqueeze(-1)
     k3 = intrinsics[..., -2].unsqueeze(-1)
-    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
-    r = torch.sqrt(r2)
-    theta = torch.atan(r)
-    points_proj = points_proj * theta / r
-    radial = 1 + k1 * r2 + k2 * r2**2 + k3 * r2**3
+    k4 = intrinsics[..., -1].unsqueeze(-1)
+    points_proj = _fisheye_from_normal_torch(points_proj)
+    theta2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
+    radial = 1 + k1 * theta2 + k2 * theta2**2 + k3 * theta2**3 + k4 * theta2**4
     points_proj = points_proj * radial
     points_proj = points_proj * ff + pp
     return points_proj
@@ -319,7 +308,11 @@ def reproject_full_opencv_no_depth(points, extrinsics, intrinsics, pp):
 
 @map_transform
 def reproject_fov_no_depth(points, extrinsics, intrinsics, pp):
-    raise NotImplementedError
+    points_cam = rotate_quat(points, extrinsics)
+    points_proj = points_cam[..., :2] / points_cam[..., 2].unsqueeze(-1)
+    ff = intrinsics[..., -3:-1]
+    omega = intrinsics[..., -1].unsqueeze(-1)
+    return _fov_distort_torch(points_proj, omega) * ff + pp
 
 @map_transform
 def reproject_simple_radial_fisheye_no_depth(points, extrinsics, intrinsics, pp):
@@ -327,11 +320,9 @@ def reproject_simple_radial_fisheye_no_depth(points, extrinsics, intrinsics, pp)
     points_proj = points_cam[..., :2] / points_cam[..., 2].unsqueeze(-1)
     f = intrinsics[..., -2].unsqueeze(-1)
     k = intrinsics[..., -1].unsqueeze(-1)
-    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
-    r = torch.sqrt(r2)
-    theta = torch.atan(r)
-    points_proj = points_proj * theta / r
-    points_proj = points_proj * (1 + k * r2) * f + pp
+    points_proj = _fisheye_from_normal_torch(points_proj)
+    theta2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
+    points_proj = points_proj * (1 + k * theta2) * f + pp
     return points_proj
 
 @map_transform
@@ -341,16 +332,31 @@ def reproject_radial_fisheye_no_depth(points, extrinsics, intrinsics, pp):
     f = intrinsics[..., -3].unsqueeze(-1)
     k1 = intrinsics[..., -2].unsqueeze(-1)
     k2 = intrinsics[..., -1].unsqueeze(-1)
-    r2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
-    r = torch.sqrt(r2)
-    theta = torch.atan(r)
-    points_proj = points_proj * theta / r
-    points_proj = points_proj * (1 + k1 * r2 + k2 * r2**2) * f + pp
+    points_proj = _fisheye_from_normal_torch(points_proj)
+    theta2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
+    points_proj = points_proj * (1 + k1 * theta2 + k2 * theta2**2) * f + pp
     return points_proj
 
 @map_transform
 def reproject_thin_prism_fisheye_no_depth(points, extrinsics, intrinsics, pp):
-    raise NotImplementedError
+    points_cam = rotate_quat(points, extrinsics)
+    points_proj = points_cam[..., :2] / points_cam[..., 2].unsqueeze(-1)
+    ff = intrinsics[..., -10:-8]
+    k1 = intrinsics[..., -8].unsqueeze(-1)
+    k2 = intrinsics[..., -7].unsqueeze(-1)
+    p = intrinsics[..., -6:-4]
+    k3 = intrinsics[..., -4].unsqueeze(-1)
+    k4 = intrinsics[..., -3].unsqueeze(-1)
+    sx = intrinsics[..., -2:]
+    points_proj = _fisheye_from_normal_torch(points_proj)
+    theta2 = torch.sum(points_proj[..., :2]**2, dim=-1).unsqueeze(-1)
+    uv = (points_proj[..., 0] * points_proj[..., 1]).unsqueeze(-1)
+    radial = k1 * theta2 + k2 * theta2**2 + k3 * theta2**3 + k4 * theta2**4
+    d = points_proj * radial + 2 * p * uv
+    d = d + p.flip(-1) * (theta2 + 2 * points_proj[..., :2]**2)
+    d = d + sx * theta2
+    points_proj = points_proj + d
+    return points_proj * ff + pp
 
 # all the reprojection functions are based on the camera model used, import a list of functions can simplify the code
 reproject_funcs = [reproject_simple_pinhole, reproject_pinhole, reproject_simple_radial, reproject_radial, reproject_opencv,
