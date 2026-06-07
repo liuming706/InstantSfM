@@ -610,7 +610,7 @@ def get_camera_model_info(model_id):
     elif model_id == CameraModelId.OPENCV:
         return {'name': 'OPENCV', 'num_params': 8, 'focal': [0, 1], 'pp': [2, 3], 'k': [4, 5], 'p': [6, 7], 'omega': [], 'sx': [], 'optimize': [0, 1, 4, 5, 6, 7]}
     elif model_id == CameraModelId.OPENCV_FISHEYE:
-        return {'name': 'OPENCV_FISHEYE', 'num_params': 8, 'focal': [0, 1], 'pp': [2, 3], 'k': [4, 5, 6, 7], 'omega': [], 'sx': [], 'optimize': [0, 1, 4, 5, 6, 7]}
+        return {'name': 'OPENCV_FISHEYE', 'num_params': 8, 'focal': [0, 1], 'pp': [2, 3], 'k': [4, 5, 6, 7], 'p': [], 'omega': [], 'sx': [], 'optimize': [0, 1, 4, 5, 6, 7]}
     elif model_id == CameraModelId.FULL_OPENCV:
         return {'name': 'FULL_OPENCV', 'num_params': 12, 'focal': [0, 1], 'pp': [2, 3], 'k': [4, 5, 8, 9, 10, 11], 'p': [6, 7], 'omega': [], 'sx': [], 'optimize': [0, 1, 4, 5, 6, 7, 8, 9, 10, 11]}
     elif model_id == CameraModelId.FOV:
@@ -935,7 +935,7 @@ def _camera_distortion(model_id: CameraModelId,
         return d
     elif model_id == CameraModelId.OPENCV_FISHEYE:
         r2 = np.sum(uv ** 2, axis=-1, keepdims=True)
-        radial = k[0] * r2 + k[1] * r2 ** 2 + k[2] * r2 ** 3
+        radial = k[0] * r2 + k[1] * r2 ** 2 + k[2] * r2 ** 3 + k[3] * r2 ** 4
         return uv * radial
     elif model_id == CameraModelId.FULL_OPENCV:
         r2 = np.sum(uv ** 2, axis=-1, keepdims=True)
@@ -952,7 +952,7 @@ def _camera_distortion(model_id: CameraModelId,
         epsilon = 1e-4
         factor = np.zeros_like(r2)
         if omega2 < epsilon:
-            factor = (omega2 * r2) / 3 - omega2 / 12 + 1
+            factor = 1 + omega2 * (1 / 12 - r2 / 3)
         else:
             r2_mask = r2 < epsilon
             tan_half_omega = np.tan(omega / 2)
@@ -973,13 +973,39 @@ def _camera_distortion(model_id: CameraModelId,
     elif model_id == CameraModelId.THIN_PRISM_FISHEYE:
         r2 = np.sum(uv ** 2, axis=-1, keepdims=True)
         uv_prod = np.expand_dims(uv[..., 0] * uv[..., 1], axis=-1)
-        radial = k[0] * r2 + k[1] * r2 ** 2 + k[2] * r2 ** 3
+        radial = k[0] * r2 + k[1] * r2 ** 2 + k[2] * r2 ** 3 + k[3] * r2 ** 4
         d = uv * radial + 2 * p * uv_prod
         d += p[::-1] * (r2 + 2 * uv ** 2)
         d += sx * r2
         return d
     else:
         raise NotImplementedError
+
+
+def _camera_undistort_fisheye_iterative(model_id: CameraModelId,
+                                        xy_norm: np.ndarray,
+                                        k: np.ndarray,
+                                        p: np.ndarray,
+                                        sx: np.ndarray) -> np.ndarray:
+    uv = xy_norm.copy()
+    for _ in range(20):
+        uv = xy_norm - _camera_distortion(model_id, uv, k, p, 0.0, sx)
+    return _normal_from_fisheye(uv)
+
+
+def _camera_fov_img2cam(xy: np.ndarray,
+                        principal_point: np.ndarray,
+                        focal_length: np.ndarray,
+                        omega: float) -> np.ndarray:
+    uv = (xy - principal_point) / focal_length
+    rd = np.linalg.norm(uv, axis=-1, keepdims=True)
+    if omega ** 2 < 1e-8:
+        return uv
+    tan_half_omega = np.tan(omega / 2)
+    scale = np.tan(rd * omega) / np.clip(2 * tan_half_omega * rd, 1e-12, None)
+    center_scale = omega / (2 * tan_half_omega)
+    scale = np.where(rd < 1e-8, center_scale, scale)
+    return uv * scale
 
 
 def _camera_img2cam(model_id: CameraModelId,
@@ -996,8 +1022,7 @@ def _camera_img2cam(model_id: CameraModelId,
     elif model_id == CameraModelId.PINHOLE:
         return (xy - principal_point) / focal_length
     elif model_id == CameraModelId.FOV:
-        uv = (xy - principal_point) / focal_length
-        return _camera_distortion(model_id, uv, k, p, omega, sx)
+        return _camera_fov_img2cam(xy, principal_point, focal_length, omega)
     elif model_id in (CameraModelId.SIMPLE_RADIAL, CameraModelId.RADIAL,
                       CameraModelId.OPENCV, CameraModelId.OPENCV_FISHEYE,
                       CameraModelId.FULL_OPENCV, CameraModelId.SIMPLE_RADIAL_FISHEYE,
@@ -1006,32 +1031,27 @@ def _camera_img2cam(model_id: CameraModelId,
                       [0, focal_length[1], principal_point[1]],
                       [0, 0, 1]], dtype=np.float64)
         xy_expanded = np.expand_dims(xy, axis=1)
-        if model_id in (CameraModelId.SIMPLE_RADIAL, CameraModelId.SIMPLE_RADIAL_FISHEYE):
+        if model_id == CameraModelId.SIMPLE_RADIAL:
             dist_coeffs = np.array([k[0], 0, 0, 0], dtype=np.float64)
-            uv = cv2.undistortPoints(xy_expanded, K, dist_coeffs).reshape(-1, 2)
-            if model_id == CameraModelId.SIMPLE_RADIAL_FISHEYE:
-                return _normal_from_fisheye(uv)
-            return uv
-        elif model_id in (CameraModelId.RADIAL, CameraModelId.RADIAL_FISHEYE):
+            return cv2.undistortPoints(xy_expanded, K, dist_coeffs).reshape(-1, 2)
+        elif model_id == CameraModelId.RADIAL:
             dist_coeffs = np.array([k[0], k[1], 0, 0], dtype=np.float64)
-            uv = cv2.undistortPoints(xy_expanded, K, dist_coeffs).reshape(-1, 2)
-            if model_id == CameraModelId.RADIAL_FISHEYE:
-                return _normal_from_fisheye(uv)
-            return uv
+            return cv2.undistortPoints(xy_expanded, K, dist_coeffs).reshape(-1, 2)
         elif model_id == CameraModelId.OPENCV:
             dist_coeffs = np.array([k[0], k[1], p[0], p[1]], dtype=np.float64)
             return cv2.undistortPoints(xy_expanded, K, dist_coeffs).reshape(-1, 2)
         elif model_id == CameraModelId.OPENCV_FISHEYE:
-            dist_coeffs = np.array([k[0], k[1], 0, 0, k[2]], dtype=np.float64)
-            uv = cv2.undistortPoints(xy_expanded, K, dist_coeffs).reshape(-1, 2)
-            return _normal_from_fisheye(uv)
+            xy_norm = (xy - principal_point) / focal_length
+            return _camera_undistort_fisheye_iterative(model_id, xy_norm, k, p, sx)
         elif model_id == CameraModelId.FULL_OPENCV:
             dist_coeffs = np.array([k[0], k[1], p[0], p[1], k[2], k[3], k[4], k[5]], dtype=np.float64)
             return cv2.undistortPoints(xy_expanded, K, dist_coeffs).reshape(-1, 2)
+        elif model_id in (CameraModelId.SIMPLE_RADIAL_FISHEYE, CameraModelId.RADIAL_FISHEYE):
+            xy_norm = (xy - principal_point) / focal_length
+            return _camera_undistort_fisheye_iterative(model_id, xy_norm, k, p, sx)
         elif model_id == CameraModelId.THIN_PRISM_FISHEYE:
-            dist_coeffs = np.array([k[0], k[1], p[0], p[1], k[2], 0, 0, 0, sx[0], sx[1], 0, 0], dtype=np.float64)
-            uv = cv2.undistortPoints(xy_expanded, K, dist_coeffs).reshape(-1, 2)
-            return _normal_from_fisheye(uv)
+            xy_norm = (xy - principal_point) / focal_length
+            return _camera_undistort_fisheye_iterative(model_id, xy_norm, k, p, sx)
     else:
         raise NotImplementedError
 
@@ -1061,7 +1081,7 @@ def _camera_cam2img(model_id: CameraModelId,
         return uv * focal_length + principal_point
     elif model_id == CameraModelId.FOV:
         uv = _camera_distortion(model_id, uv, k, p, omega, sx)
-        return uv * f_scalar + principal_point
+        return uv * focal_length + principal_point
     elif model_id in (CameraModelId.SIMPLE_RADIAL_FISHEYE, CameraModelId.RADIAL_FISHEYE, CameraModelId.THIN_PRISM_FISHEYE):
         uv = _fisheye_from_normal(uv)
         uv += _camera_distortion(model_id, uv, k, p, omega, sx)
