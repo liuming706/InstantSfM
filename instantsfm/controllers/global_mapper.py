@@ -12,7 +12,6 @@ from instantsfm.processors.image_pair_inliers import ImagePairInliersCount
 from instantsfm.processors.relpose_filter import FilterInlierNum, FilterInlierRatio, FilterRotations
 from instantsfm.processors.rotation_averaging import RotationEstimator
 from instantsfm.processors.track_establishment import TrackEngine
-from instantsfm.processors.reconstruction_normalizer import NormalizeReconstruction
 from instantsfm.processors.global_positioning import TorchGP
 from instantsfm.processors.track_filter import FilterTracksByAngle, FilterTracksByReprojectionNormalized, FilterTracksTriangulationAngle
 from instantsfm.processors.bundle_adjustment import TorchBA
@@ -131,7 +130,6 @@ def SolveGlobalMapper(view_graph:ViewGraph, cameras, images, config:Config, visu
     gp_engine.Optimize(cameras, images, tracks, config.GLOBAL_POSITIONER_OPTIONS, use_depths=config.RUNTIME_OPTIONS['use_depths'], 
                        is_multi=gp_use_rig, use_fixed_rel_poses=config.RUNTIME_OPTIONS['use_fixed_rel_poses'])
     tracks = FilterTracksByAngle(cameras, images, tracks, config.INLIER_THRESHOLD_OPTIONS['max_angle_error'])
-    NormalizeReconstruction(images, tracks, use_depths=config.RUNTIME_OPTIONS['use_depths'])
     print('Global positioning took: ', time.time() - start_time)
 
     print('-------------------------------------')
@@ -156,7 +154,6 @@ def SolveGlobalMapper(view_graph:ViewGraph, cameras, images, config:Config, visu
     UndistortImages(cameras, images)
     FilterTracksByReprojectionNormalized(cameras, images, tracks, config.INLIER_THRESHOLD_OPTIONS['max_reprojection_error'])
     FilterTracksTriangulationAngle(cameras, images, tracks, config.INLIER_THRESHOLD_OPTIONS['min_triangulation_angle'])
-    NormalizeReconstruction(images, tracks, use_depths=config.RUNTIME_OPTIONS['use_depths'])
     
     if config.RUNTIME_OPTIONS['multi_camera_rig']:
         print('Rebuilding rig structure after BA...')
@@ -178,7 +175,6 @@ def SolveGlobalMapper(view_graph:ViewGraph, cameras, images, config:Config, visu
         ba_engine.Solve(cameras, images, tracks, config.BUNDLE_ADJUSTER_OPTIONS,
                         use_depths=config.RUNTIME_OPTIONS['use_depths'], optimize_intrinsics=optimize_intrinsics)
 
-        # NormalizeReconstruction(images, tracks)
         UndistortImages(cameras, images)
         print('Filtering tracks')
         FilterTracksByReprojectionNormalized(cameras, images, tracks, config.INLIER_THRESHOLD_OPTIONS['max_reprojection_error'])
