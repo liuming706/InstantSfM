@@ -196,3 +196,5 @@ datasets/*
 db/*
 .omx/
 .codex/
+data_download/*
+mip360/*
