@@ -36,7 +36,7 @@ dependencies = [
     "jaxtyping",
     "triton",
     "gsplat",
-    "pypose @ git+https://github.com/pypose/pypose.git@bae",
+    "pypose @ git+https://github.com/pypose/pypose.git",
     "fused-ssim @ git+https://github.com/rahul-goel/fused-ssim",
 ]
 
