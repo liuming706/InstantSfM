@@ -10,7 +10,7 @@ from instantsfm.scene.defs import CameraModelId, get_camera_model_info
 from instantsfm.utils.cost_function import reproject_funcs_no_depth
 
 import torch
-from bae.utils.ba import rotate_quat
+import pypose as pp
 
 EPSILON = 1e-7
 
@@ -260,7 +260,7 @@ def complete_tracks(cameras, images, tracks, tracks_orig, TRIANGULATOR_OPTIONS):
     camera_extrinsics = camera_params[..., :7]
     camera_intrinsics = camera_params[..., 7:]
 
-    points_proj = rotate_quat(points_3d, camera_extrinsics)
+    points_proj = pp.SE3(camera_extrinsics).Act(points_3d)
     valid_mask = points_proj[..., 2] > EPSILON # filter out points behind the camera
 
     errors = cost_fn(points_3d, camera_extrinsics, camera_intrinsics, camera_pps)

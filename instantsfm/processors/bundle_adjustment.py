@@ -16,7 +16,6 @@ from torch import nn
 import pypose as pp
 from pypose.optim.kernel import Huber
 from bae.utils.pysolvers import PCG
-from bae.utils.ba import rotate_quat
 from bae.optim import LM
 from bae.autograd.function import TrackingTensor
 
