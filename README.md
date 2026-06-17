@@ -191,10 +191,9 @@ If you find our code or paper useful, please consider citing:
 @article{zhong2026instantsfm,
   title = {InstantSfM: Towards GPU-Native SfM for the Deep Learning Era},
   author = {Zhong, Jiankun and Zhan, Zitong and Gao, Quankai and Chen, Ziyu and Lou, Haozhe and Mao, Jiageng and Neumann, Ulrich and Wang, Chen and Wang, Yue},
-  journal = {arXiv preprint arXiv:2510.13310},
-  year = {2025},
-  url = {https://arxiv.org/abs/2510.13310},
-  code = {https://github.com/cre185/InstantSfM}
+  journal = {IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+  year = {2026},
+  url = {https://arxiv.org/abs/2510.13310}
 }
 ```
 and
