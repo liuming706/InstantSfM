@@ -362,20 +362,32 @@ def read_points3D_text(path):
         void Reconstruction::WritePoints3DText(const std::string& path)
     """
     points3D = {}
+    has_semantic_fields = False
     with open(path, "r") as fid:
         while True:
             line = fid.readline()
             if not line:
                 break
             line = line.strip()
+            if len(line) > 0 and line[0] == "#":
+                if "SEMANTIC_LABEL" in line and "SEMANTIC_CONF" in line:
+                    has_semantic_fields = True
+                continue
             if len(line) > 0 and line[0] != "#":
                 elems = line.split()
                 point3D_id = int(elems[0])
                 xyz = np.array(tuple(map(float, elems[1:4])))
                 rgb = np.array(tuple(map(int, elems[4:7])))
                 error = float(elems[7])
-                image_ids = np.array(tuple(map(int, elems[8::2])))
-                point2D_idxs = np.array(tuple(map(int, elems[9::2])))
+                track_start_idx = 10 if has_semantic_fields else 8
+                try:
+                    image_ids = np.array(tuple(map(int, elems[track_start_idx::2])))
+                    point2D_idxs = np.array(tuple(map(int, elems[track_start_idx + 1::2])))
+                except ValueError:
+                    if has_semantic_fields:
+                        raise
+                    image_ids = np.array(tuple(map(int, elems[10::2])))
+                    point2D_idxs = np.array(tuple(map(int, elems[11::2])))
                 points3D[point3D_id] = Point3D(
                     id=point3D_id,
                     xyz=xyz,
