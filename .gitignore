@@ -198,3 +198,4 @@ db/*
 .codex/
 data_download/*
 mip360/*
+scannetpp

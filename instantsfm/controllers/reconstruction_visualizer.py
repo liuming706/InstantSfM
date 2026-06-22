@@ -10,8 +10,71 @@ from pathlib import Path
 import datetime
 import imageio
 import tqdm
+from scipy.spatial import cKDTree
 
-from instantsfm.utils.read_write_model import read_points3D_binary
+from instantsfm.utils.read_write_model import read_points3D_binary, read_points3D_text
+
+
+def read_points3D_model(reconstruction_path: Path):
+    """Read COLMAP points from a reconstruction directory."""
+    reconstruction_path = Path(reconstruction_path)
+    binary_path = reconstruction_path / "points3D.bin"
+    if binary_path.is_file():
+        return read_points3D_binary(binary_path)
+
+    text_path = reconstruction_path / "points3D.txt"
+    if text_path.is_file():
+        return read_points3D_text(text_path)
+
+    raise FileNotFoundError(
+        f"No points3D model found in {reconstruction_path}. "
+        "Expected points3D.bin or points3D.txt."
+    )
+
+
+def build_filtered_points_colors(step_tracks, final_track_colors, final_track_tree=None, final_track_xyzs=None, final_track_rgbs=None):
+    """Build point/color arrays for offline playback.
+
+    Step track IDs are not guaranteed to remain stable after later filtering /
+    retriangulation, and step colors are often still unset during optimization.
+    Prefer a non-zero serialized step color when present; otherwise transfer
+    color from the nearest final reconstruction point in XYZ space.
+    """
+    filtered_points = []
+    filtered_colors = []
+    for track in step_tracks:
+        xyz = track.get("xyz")
+        if xyz is None:
+            continue
+
+        color = track.get("color")
+        if color is None or not np.any(color):
+            if final_track_tree is not None and final_track_xyzs is not None and final_track_rgbs is not None:
+                _, nn_idx = final_track_tree.query(np.asarray(xyz, dtype=np.float32), k=1)
+                color = final_track_rgbs[nn_idx]
+            else:
+                track_id = track.get("id")
+                if track_id is None or track_id not in final_track_colors:
+                    continue
+                color = final_track_colors[track_id]
+
+        if color is None:
+            track_id = track.get("id")
+            if track_id is None or track_id not in final_track_colors:
+                continue
+            color = final_track_colors[track_id]
+
+        filtered_points.append(np.array(xyz, dtype=np.float32))
+        filtered_colors.append(np.array(color, dtype=np.uint8))
+
+    if filtered_points and filtered_colors:
+        points = np.stack(filtered_points, axis=0)
+        colors = np.stack(filtered_colors, axis=0)
+    else:
+        points = np.zeros((0, 3), dtype=np.float32)
+        colors = np.zeros((0, 3), dtype=np.uint8)
+    return points, colors
+
 
 class ReconstructionVisualizer:
     """Visualizer for Structure from Motion reconstruction process.
@@ -29,6 +92,7 @@ class ReconstructionVisualizer:
         frustum_scale: float = 0.2,  # Increased default frustum scale
         save_data: bool = False,  # Whether to automatically save reconstruction steps
         save_dir: str = "./recon_records",  # Directory to save data (default: ./recon_records)
+        enable_server: bool = True,
     ):
         """Initialize the SfM visualization.
         
@@ -40,12 +104,13 @@ class ReconstructionVisualizer:
             save_data: Whether to automatically save each step
             save_dir: Directory to save reconstruction data
         """
-        self.server = viser.ViserServer()
+        self.server = viser.ViserServer() if enable_server else None
         self.min_update_interval = min_update_interval
         self.point_size = point_size
         self.show_axes = show_axes
         self.frustum_scale = frustum_scale
         self.save_data = save_data
+        self.enable_server = enable_server
         
         # Set up save directory
         self.save_dir = Path(save_dir)
@@ -77,13 +142,15 @@ class ReconstructionVisualizer:
         self.reconstruction_history = []
         
         # Configure visualization
-        self._setup_visualization()
-        
-        # Start update thread
-        self.running = True
-        self.update_thread = threading.Thread(target=self._update_loop)
-        self.update_thread.daemon = True
-        self.update_thread.start()
+        if self.enable_server:
+            self._setup_visualization()
+            self.running = True
+            self.update_thread = threading.Thread(target=self._update_loop)
+            self.update_thread.daemon = True
+            self.update_thread.start()
+        else:
+            self.running = False
+            self.update_thread = None
     
     def _setup_visualization(self):
         """Set up the initial visualization elements."""
@@ -247,13 +314,13 @@ class ReconstructionVisualizer:
                 }
                 self.save_step_data(step_data, step_name)
                 self.current_step += 1
-            
-            # Update visualization through existing add_step method
-            with self.update_lock:
-                self.points = points_array
-                self.colors = colors_array
-                self.cameras = cameras_dict
-                self.pending_update = True
+
+            if self.enable_server:
+                with self.update_lock:
+                    self.points = points_array
+                    self.colors = colors_array
+                    self.cameras = cameras_dict
+                    self.pending_update = True
 
             return True
         else:
@@ -388,28 +455,33 @@ class OfflinePlayer:
         print(f"Loaded {len(self.steps_data)} steps for playback")
 
         # Load final tracks for colors
-        self.final_tracks = read_points3D_binary(os.path.join(self.reconstruction_path, 'points3D.bin'))
+        self.final_tracks = read_points3D_model(self.reconstruction_path)
         self.final_track_colors = {}
+        final_xyzs = []
+        final_rgbs = []
         for track_id, track in self.final_tracks.items():
             self.final_track_colors[track_id] = track.rgb
+            final_xyzs.append(np.asarray(track.xyz, dtype=np.float32))
+            final_rgbs.append(np.asarray(track.rgb, dtype=np.uint8))
+        if final_xyzs:
+            self.final_track_xyzs = np.stack(final_xyzs, axis=0)
+            self.final_track_rgbs = np.stack(final_rgbs, axis=0)
+            self.final_track_tree = cKDTree(self.final_track_xyzs)
+        else:
+            self.final_track_xyzs = None
+            self.final_track_rgbs = None
+            self.final_track_tree = None
 
         for step_data in tqdm.tqdm(self.steps_data, desc="Processing"):
             data = step_data['data']
             step_tracks = data.get('serialized_tracks', [])
-            filtered_points = []
-            filtered_colors = []
-            for track in step_tracks:
-                track_id = track['id']
-                if track_id is not None and track_id in self.final_track_colors:
-                    filtered_points.append(np.array(track['xyz'], dtype=np.float32))
-                    filtered_colors.append(self.final_track_colors[track_id])
-            if filtered_points and filtered_colors:
-                points = np.stack(filtered_points, axis=0)
-                colors = np.stack(filtered_colors, axis=0)
-            else:
-                points = np.zeros((0, 3), dtype=np.float32)
-                colors = np.zeros((0, 3), dtype=np.uint8)
-
+            points, colors = build_filtered_points_colors(
+                step_tracks,
+                self.final_track_colors,
+                self.final_track_tree,
+                self.final_track_xyzs,
+                self.final_track_rgbs,
+            )
             step_data['filtered_points'] = points
             step_data['filtered_colors'] = colors
         
