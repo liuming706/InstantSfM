@@ -136,6 +136,9 @@ def ReadColmapDatabase(path):
         image_pairs[pair_key].matches = valid_matches
 
         config = ConfigurationType(config)
+        # COLMAP >= 4.x rig-verified pairs carry an essential matrix like CALIBRATED
+        if config == ConfigurationType.CALIBRATED_RIG:
+            config = ConfigurationType.CALIBRATED
         image_pairs[pair_key].config = config
         if config in [ConfigurationType.UNDEFINED, ConfigurationType.DEGENERATE, ConfigurationType.WATERMARK, ConfigurationType.MULTIPLE]:
             image_pairs[pair_key].is_valid = False

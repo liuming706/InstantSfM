@@ -535,6 +535,8 @@ class ConfigurationType(Enum):
     PLANAR_OR_PANORAMIC = 6
     WATERMARK = 7
     MULTIPLE = 8
+    # COLMAP >= 4.x: metric relative pose from a calibrated rig
+    CALIBRATED_RIG = 9
 
 
 # ============================================================================

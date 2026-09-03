@@ -175,6 +175,29 @@ ins-vis --data_path /path/to/folder
 ```
 For a more detailed usage, you can run the command with `--help` to see all available options.  
 
+### Quick scripts (single GPU, tested on RTX 4060 with 8GB VRAM)
+The `scripts/` folder contains shortcut scripts that set up the environment automatically and run each stage of the pipeline with settings tuned for a single 8GB GPU:
+
+| Script | What it does |
+|---|---|
+| `scripts/run_demo.sh` | Launch the gradio web demo at http://localhost:7860 |
+| `scripts/run_sfm.sh <data_dir>` | Feature extraction + matching (skipped if `database.db` exists), then GPU SfM. Output: `<data_dir>/sparse/0/` |
+| `scripts/run_gs.sh <data_dir> [steps_scaler]` | 3DGS training. `steps_scaler` defaults to `0.5` (15000 steps, ~12 min); use `1.0` for the full 30000 steps |
+| `scripts/vis_gs.sh <data_dir> [ckpt] [port]` | Visualize a trained 3DGS checkpoint in the browser (viser viewer, default port 8080). `ckpt` defaults to the newest checkpoint in `<data_dir>/gsplat/ckpts/` |
+
+Typical workflow on the bundled example:
+```bash
+cp -r examples/kitchen /tmp/kitchen      # keep examples/ clean
+scripts/run_sfm.sh /tmp/kitchen          # SfM reconstruction
+scripts/run_gs.sh /tmp/kitchen           # 3DGS training
+scripts/vis_gs.sh /tmp/kitchen           # then open http://localhost:8080
+```
+
+Notes for 8GB GPUs:
+- `run_gs.sh` uses the `mcmc` strategy, which caps the number of Gaussians at 1M, together with packed rendering. The `default` strategy used by `ins-gs` grows Gaussians without bound and runs out of memory on 8GB VRAM.
+- `vis_gs.sh` loads the checkpoint (no re-training), re-runs evaluation, and then keeps an interactive viewer running until you press Ctrl+C.
+- The scripts assume the conda environment from Section 1 lives at `/root/miniconda3/envs/instantsfm`; override with `INSTANTSFM_ENV=/path/to/env` if yours is elsewhere.
+
 ## 4. Tools for extra data processing  
 We provide extra tools for data processing based on prevalent models in the `tools/` folder. Please refer to [tools/usage.md](tools/usage.md) for more details. Currently we support Video Depth Anything for metric scale depth estimation from videos. More tools will be added in the future.  
 
